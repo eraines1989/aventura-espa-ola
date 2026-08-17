@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Preview — Fluidez y Avatares</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:16px;background:#f6fbf6;color:#123;}
+  .row{display:flex;gap:16px;align-items:flex-start}
+  .card{background:#fff;border:1px solid #e3efe3;border-radius:10px;padding:12px;box-shadow:0 4px 8px rgba(0,0,0,0.03)}
+  .left{flex:1;min-width:320px}
+  .side{width:340px}
+  button,input,select{font:inherit}
+  .avatar-preview{width:110px;height:110px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;margin-bottom:8px}
+  canvas{width:100%;height:80px;background:#fff;border-radius:6px;border:1px solid #e6f0e6}
+  .metrics{font-size:13px}
+  .level-buttons button{margin-right:6px}
+  /* Mini map styles */
+  .mini-map{width:320px;height:220px;border-radius:12px;background:#ffffff;border:2px dashed #dcdcdc;position:relative;margin-bottom:12px}
+  .map-avatar{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;position:absolute;box-shadow:0 4px 8px rgba(0,0,0,0.08);user-select:none}
+</style>
+</head>
+<body>
+  <h2>Mundo de Idiomas — Preview: Fluidez y Avatares</h2>
+  <div class="row">
+    <div class="left card">
+      <!-- Mini map so user sees avatar on map and can move it -->
+      <div class="mini-map" id="miniMap" tabindex="0" aria-label="Mapa de prueba"> 
+        <div id="playerAvatar" class="map-avatar" style="top:80px;left:120px;background:#cde6cd">Tú</div>
+      </div>
+
+      <h3>Ejercicio</h3>
+      <label for="level">Nivel:</label>
+      <select id="level">
+        <option value="principiante">Principiante</option>
+        <option value="intermedio">Intermedio</option>
+        <option value="avanzado">Avanzado</option>
+      </select>
+
+      <div style="margin-top:8px" id="promptArea">
+        <strong>Prompt:</strong>
+        <p id="promptText">A</p>
+      </div>
+
+      <div style="margin-top:8px" class="level-buttons">
+        <button id="prevPrompt">◀</button>
+        <button id="nextPrompt">▶</button>
+        <button id="randomPrompt">Aleatorio</button>
+      </div>
+
+      <hr />
+
+      <h4>Audio</h4>
+      <div style="display:flex;gap:8px;">
+        <button id="recordBtn">🎤 Grabar (3s)</button>
+        <input id="fileInput" type="file" accept="audio/*" />
+        <button id="downloadBtn" disabled>⬇️ Descargar</button>
+      </div>
+
+      <div style="margin-top:8px;">
+        <audio id="player" controls style="width:100%;display:none"></audio>
+      </div>
+
+      <div style="margin-top:10px">
+        <canvas id="wave" width="800" height="80"></canvas>
+      </div>
+
+      <div style="margin-top:10px" class="metrics" id="metrics"></div>
+
+      <hr />
+
+      <h4>Evaluación (heurística)</h4>
+      <div id="evaluation" style="font-weight:700">Sin evaluación</div>
+      <div style="margin-top:6px;font-size:13px;color:#333" id="advice"></div>
+    </div>
+
+    <div class="side card">
+      <h3>Avatar personalizado</h3>
+      <div id="avatarBox">
+        <div id="avatarPreview" class="avatar-preview" style="background:#cde6cd">🙂</div>
+        <div><input id="avatarName" placeholder="Tu nombre" /></div>
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Emoji:</label>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="emojiBtn">🙂</button>
+          <button class="emojiBtn">🧑‍🏫</button>
+          <button class="emojiBtn">🧑‍🎓</button>
+          <button class="emojiBtn">🧑‍💻</button>
+          <button class="emojiBtn">🐯</button>
+        </div>
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Color:</label>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="colorBtn" data-color="#cde6cd" style="background:#cde6cd;width:34px;height:34px;border-radius:6px;border:0"></button>
+          <button class="colorBtn" data-color="#ffdede" style="background:#ffdede;width:34px;height:34px;border-radius:6px;border:0"></button>
+          <button class="colorBtn" data-color="#dfe9ff" style="background:#dfe9ff;width:34px;height:34px;border-radius:6px;border:0"></button>
+          <button class="colorBtn" data-color="#fff2cc" style="background:#fff2cc;width:34px;height:34px;border-radius:6px;border:0"></button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <button id="saveAvatar">Guardar avatar</button>
+        <button id="exportAvatar">Exportar JSON</button>
+        <button id="importAvatarBtn">Importar JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display:none"/>
+      </div>
+      <div style="margin-top:12px;color:#444;font-size:13px">
+        Avatar guardado en este navegador (localStorage).
+      </div>
+    </div>
+  </div>
+
+<script>
+/* --- Prompts por nivel --- */
+const PROMPTS = {
+  principiante: ['A','E','I','O','U','RR','pa','ta','ma'],
+  intermedio: ['Hola','Casa','Comer','¿Cómo estás?','Gracias','Por favor'],
+  avanzado: ['Hoy hace buen día para aprender español.','La práctica frecuente mejora la fluidez.','Lee este párrafo en voz alta y mantén ritmo estable.']
+};
+
+/* --- UI refs --- */
+const levelSel = document.getElementById('level');
+const promptText = document.getElementById('promptText');
+const prevBtn = document.getElementById('prevPrompt');
+const nextBtn = document.getElementById('nextPrompt');
+const randomBtn = document.getElementById('randomPrompt');
+const recordBtn = document.getElementById('recordBtn');
+const player = document.getElementById('player');
+const waveCanvas = document.getElementById('wave');
+const metricsDiv = document.getElementById('metrics');
+const evaluationDiv = document.getElementById('evaluation');
+const adviceDiv = document.getElementById('advice');
+const fileInput = document.getElementById('fileInput');
+const downloadBtn = document.getElementById('downloadBtn');
+
+let promptIndex = 0;
+function updatePrompt(){ const list = PROMPTS[levelSel.value]; promptText.innerText = list[promptIndex % list.length]; }
+levelSel.addEventListener('change', ()=>{ promptIndex=0; updatePrompt(); });
+prevBtn.addEventListener('click', ()=>{ promptIndex = Math.max(0,promptIndex-1); updatePrompt();});
+nextBtn.addEventListener('click', ()=>{ promptIndex++; updatePrompt();});
+randomBtn.addEventListener('click', ()=>{ const list=PROMPTS[levelSel.value]; promptIndex=Math.floor(Math.random()*list.length); updatePrompt();});
+updatePrompt();
+
+/* --- Avatar --- */
+const avatarPreview = document.getElementById('avatarPreview');
+const avatarName = document.getElementById('avatarName');
+const miniMap = document.getElementById('miniMap');
+const playerAvatar = document.getElementById('playerAvatar');
+
+// emoji/color buttons
+document.querySelectorAll('.emojiBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.textContent=b.textContent; playerAvatar.textContent = b.textContent; }));
+document.querySelectorAll('.colorBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.style.background = b.dataset.color; playerAvatar.style.background = b.dataset.color; }));
+
+// save avatar to localStorage
+document.getElementById('saveAvatar').addEventListener('click',()=>{
+  const data = {emoji: avatarPreview.textContent, color: avatarPreview.style.background, name: avatarName.value||''};
+  localStorage.setItem('miAvatar', JSON.stringify(data));
+  // reflect on map
+  playerAvatar.textContent = data.name ? (data.name.length>3 ? data.name.slice(0,3) : data.name) : data.emoji || 'Tú';
+  playerAvatar.style.background = data.color || getComputedStyle(playerAvatar).background;
+  alert('Avatar guardado en este navegador.');
+});
+
+// export/import
+document.getElementById('exportAvatar').addEventListener('click',()=>{
+  const v = localStorage.getItem('miAvatar') || JSON.stringify({emoji:avatarPreview.textContent, color:avatarPreview.style.background, name:avatarName.value||''});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([v],{type:'application/json'}));
+  a.download='avatar.json'; document.body.appendChild(a); a.click(); a.remove();
+});
+
+document.getElementById('importAvatarBtn').addEventListener('click',()=>document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change', async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const txt = await f.text(); try{
+    const j = JSON.parse(txt);
+    avatarPreview.textContent = j.emoji||'🙂';
+    avatarPreview.style.background = j.color||'#cde6cd';
+    avatarName.value = j.name||'';
+    localStorage.setItem('miAvatar', JSON.stringify(j));
+    // reflect on map
+    playerAvatar.textContent = j.name ? (j.name.length>3?j.name.slice(0,3):j.name) : j.emoji || 'Tú';
+    playerAvatar.style.background = j.color || playerAvatar.style.background;
+    alert('Avatar importado y guardado.');
+  }catch(err){ alert('JSON inválido'); }
+});
+
+// load avatar on start
+try{
+  const a = JSON.parse(localStorage.getItem('miAvatar')||'null');
+  if(a){ avatarPreview.textContent=a.emoji||'🙂'; avatarPreview.style.background=a.color||avatarPreview.style.background; avatarName.value=a.name||''; 
+    // reflect on map
+    playerAvatar.textContent = a.name ? (a.name.length>3?a.name.slice(0,3):a.name) : a.emoji || 'Tú';
+    playerAvatar.style.background = a.color || playerAvatar.style.background;
+  }
+}catch(e){/* ignore */}
+
+/* --- Audio: record or file --- */
+let mediaRecorder=null, audioBlob=null;
+
+recordBtn.addEventListener('click', async ()=>{
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop(); return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('No hay soporte de micrófono en este navegador. Usa subir archivo.');
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRecorder = new MediaRecorder(stream);
+    const chunks=[];
+    mediaRecorder.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+    mediaRecorder.onstart = () => { recordBtn.textContent='⏹ Detener'; };
+    mediaRecorder.onstop = () => {
+      audioBlob = new Blob(chunks,{type:chunks[0]?.type||'audio/webm'});
+      player.src = URL.createObjectURL(audioBlob);
+      player.style.display='block';
+      downloadBtn.disabled=false;
+      // release tracks
+      stream.getTracks().forEach(t=>t.stop());
+      processAudioBlob(audioBlob);
+      recordBtn.textContent='🎤 Grabar (3s)';
+    };
+    mediaRecorder.start();
+    // auto-stop after 3s
+    setTimeout(()=>{ if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.stop(); },3000);
+  }catch(err){ console.error(err); alert('Permite el micrófono o prueba subir archivo.'); }
+});
+
+/* file input */
+fileInput.addEventListener('change', async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  audioBlob = f;
+  player.src = URL.createObjectURL(f);
+  player.style.display='block';
+  downloadBtn.disabled=false;
+  processAudioBlob(f);
+});
+
+/* download */
+downloadBtn.addEventListener('click', ()=>{
+  if(!audioBlob) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(audioBlob);
+  a.download = (promptText.innerText || 'grabacion') + '.webm';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* --- Audio processing: waveform + heuristics --- */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+async function processAudioBlob(blob){
+  try{
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    drawWaveform(audioBuffer);
+    const metrics = analyzeBuffer(audioBuffer);
+    showMetrics(metrics);
+    const label = evaluateFluency(metrics);
+    evaluationDiv.innerText = label;
+    adviceDiv.innerText = generateAdvice(metrics,label);
+  }catch(err){
+    console.error(err);
+    metricsDiv.innerText = 'Error procesando audio';
+  }
+}
+
+/* draw waveform */
+function drawWaveform(buffer){
+  const canvas = waveCanvas;
+  const ctx = canvas.getContext('2d');
+  const data = buffer.getChannelData(0);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#f8fff8'; ctx.fillRect(0,0,W,H);
+  ctx.lineWidth=1; ctx.strokeStyle='#2e7d32'; ctx.beginPath();
+  const step = Math.ceil(data.length / W);
+  for(let i=0;i<W;i++){
+    let min=1, max=-1;
+    const start=i*step;
+    for(let j=0;j<step && (start+j)<data.length;j++){
+      const v = data[start+j];
+      if(v<min) min=v;
+      if(v>max) max=v;
+    }
+    const y1 = (1+min)*(H/2);
+    const y2 = (1+max)*(H/2);
+    ctx.moveTo(i,y1); ctx.lineTo(i,y2);
+  }
+  ctx.stroke();
+}
+
+/* analyzeBuffer: returns duration, voicedFraction, pausesCount, avgPauseSec */
+function analyzeBuffer(buffer){
+  const sr = buffer.sampleRate;
+  const data = buffer.getChannelData(0);
+  const duration = buffer.duration;
+  // RMS sliding window to detect voice vs silence
+  const winMs = 40; // 40 ms window
+  const win = Math.floor(sr * (winMs/1000));
+  const energies = [];
+  for(let i=0;i<data.length;i+=win){
+    let sum=0, len=0;
+    for(let j=0;j<win && (i+j)<data.length;j++){
+      const v = data[i+j]; sum += v*v; len++;
+    }
+    energies.push(Math.sqrt(sum/Math.max(1,len)));
+  }
+  // threshold: adaptive (median * factor) or fallback
+  const sorted = [...energies].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length/2)] || 0;
+  const thresh = Math.max(0.005, median * 3.0); // tuned heuristics
+  const voiced = energies.map(e => e > thresh ? 1 : 0);
+  const voicedFrames = voiced.reduce((s,v)=>s+v,0);
+  const voicedFraction = voicedFrames / Math.max(1, voiced.length);
+  // detect silence segments (> pauseThresholdWindows)
+  const pauseThresholdSec = 0.35;
+  const pauseThresholdWins = Math.ceil((pauseThresholdSec*1000)/winMs);
+  let pauses = [];
+  let cur = 0;
+  for(let i=0;i<voiced.length;i++){
+    if(voiced[i]===0){
+      cur++;
+    } else {
+      if(cur>=pauseThresholdWins) pauses.push(cur * (winMs/1000));
+      cur=0;
+    }
+  }
+  if(cur>=pauseThresholdWins) pauses.push(cur*(winMs/1000));
+  const pausesCount = pauses.length;
+  const avgPause = pausesCount ? (pauses.reduce((a,b)=>a+b,0)/pausesCount) : 0;
+  return {duration, voicedFraction, pausesCount, avgPause};
+}
+
+/* show metrics */
+function showMetrics(m){
+  metricsDiv.innerHTML = `
+    Duración: ${m.duration.toFixed(2)} s<br/>
+    Fracción hablada (estimada): ${(m.voicedFraction*100).toFixed(1)}%<br/>
+    Pausas detectadas (>0.35s): ${m.pausesCount}<br/>
+    Duración media de pausas: ${m.avgPause.toFixed(2)} s
+  `;
+}
+
+/* evaluateFluency: map heuristics to labels */
+function evaluateFluency(m){
+  if(m.duration < 0.4) return 'Muy corta (repite más largo)';
+  // heuristics tuned simply:
+  if(m.voicedFraction < 0.25 || m.pausesCount > 5 || m.avgPause > 0.6) return 'Básico';
+  if(m.voicedFraction < 0.55 || m.pausesCount > 2 || m.avgPause > 0.4) return 'Intermedio';
+  return 'Avanzado';
+}
+
+/* generate advice */
+function generateAdvice(m,label){
+  if(label==='Muy corta') return 'Intenta hablar un poco más tiempo para evaluar la fluidez.';
+  if(label==='Básico') return 'Consejo: practica mantener la voz continua. Evita pausas largas, lee frases completas y repite diariamente.';
+  if(label==='Intermedio') return 'Consejo: buena base. Trabaja en reducir pausas y aumentar la continuidad. Practica frases más largas.';
+  return 'Excelente fluidez. Mantén el ritmo y pronuncia con claridad. Prueba ejercicios de entonación.';
+}
+
+/* init: if user has saved avatar already show it (done above) */
+
+/* Optional: play -> visualize live? skip for simplicity */
+
+/* === NEW: sync avatar to map and dragging + keyboard movement === */
+
+// Ensure elements exist
+const miniMapEl = document.getElementById('miniMap');
+const playerEl = document.getElementById('playerAvatar');
+
+function syncAvatarToMapFromLocal(){
+  try{
+    const a = JSON.parse(localStorage.getItem('miAvatar')||'null');
+    if(!a) return;
+    avatarPreview.textContent = a.emoji||avatarPreview.textContent;
+    avatarPreview.style.background = a.color||avatarPreview.style.background;
+    avatarName.value = a.name||avatarName.value;
+    playerEl.textContent = a.name ? (a.name.length>3? a.name.slice(0,3): a.name) : (a.emoji || 'Tú');
+    playerEl.style.background = a.color || playerEl.style.background;
+  }catch(e){ console.warn('sync avatar', e); }
+}
+// call once
+syncAvatarToMapFromLocal();
+
+// live update when choosing emoji/color
+document.querySelectorAll('.emojiBtn').forEach(b=> b.addEventListener('click', ()=>{
+  const emoji = b.textContent; avatarPreview.textContent = emoji; playerEl.textContent = avatarName.value? (avatarName.value.length>3?avatarName.value.slice(0,3):avatarName.value) : emoji;
+}));
+document.querySelectorAll('.colorBtn').forEach(b=> b.addEventListener('click', ()=>{
+  const color = b.dataset.color; avatarPreview.style.background = color; playerEl.style.background = color;
+}));
+
+// focus miniMap when saving name to allow arrow keys
+document.getElementById('saveAvatar').addEventListener('click', ()=>{ syncAvatarToMapFromLocal(); miniMapEl.focus(); });
+
+// Dragging with pointer events
+let dragging=false, dragOffsetX=0, dragOffsetY=0;
+playerEl.addEventListener('pointerdown', ev=>{
+  ev.preventDefault(); dragging=true; playerEl.setPointerCapture(ev.pointerId);
+  const rect = playerEl.getBoundingClientRect(); dragOffsetX = ev.clientX - rect.left; dragOffsetY = ev.clientY - rect.top;
+});
+
+document.addEventListener('pointermove', ev=>{
+  if(!dragging) return; const mapRect = miniMapEl.getBoundingClientRect();
+  let left = ev.clientX - mapRect.left - dragOffsetX; let top = ev.clientY - mapRect.top - dragOffsetY;
+  left = Math.max(0, Math.min(miniMapEl.clientWidth - playerEl.offsetWidth, left));
+  top = Math.max(0, Math.min(miniMapEl.clientHeight - playerEl.offsetHeight, top));
+  playerEl.style.left = left+'px'; playerEl.style.top = top+'px';
+});
+
+document.addEventListener('pointerup', ev=>{ if(!dragging) return; try{ playerEl.releasePointerCapture(ev.pointerId); }catch(e){} dragging=false; });
+
+// Keyboard movement for the miniMap (arrow keys when miniMap focused)
+miniMapEl.addEventListener('keydown', e=>{
+  const arrows=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight']; if(!arrows.includes(e.key)) return;
+  e.preventDefault(); let top = parseInt(playerEl.style.top,10) || playerEl.offsetTop; let left = parseInt(playerEl.style.left,10) || playerEl.offsetLeft; const step=10;
+  if(e.key==='ArrowUp') top = Math.max(0, top-step);
+  if(e.key==='ArrowDown') top = Math.min(miniMapEl.clientHeight - playerEl.offsetHeight, top+step);
+  if(e.key==='ArrowLeft') left = Math.max(0, left-step);
+  if(e.key==='ArrowRight') left = Math.min(miniMapEl.clientWidth - playerEl.offsetWidth, left+step);
+  playerEl.style.top = top+'px'; playerEl.style.left = left+'px';
+});
+
+// click miniMap to focus for keyboard
+miniMapEl.addEventListener('click', ()=> miniMapEl.focus());
+
+</script>
+</body>
+</html>
