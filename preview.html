@@ -15,12 +15,20 @@
   canvas{width:100%;height:80px;background:#fff;border-radius:6px;border:1px solid #e6f0e6}
   .metrics{font-size:13px}
   .level-buttons button{margin-right:6px}
+  /* Mini map styles */
+  .mini-map{width:320px;height:220px;border-radius:12px;background:#ffffff;border:2px dashed #dcdcdc;position:relative;margin-bottom:12px}
+  .map-avatar{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;position:absolute;box-shadow:0 4px 8px rgba(0,0,0,0.08);user-select:none}
 </style>
 </head>
 <body>
   <h2>Mundo de Idiomas — Preview: Fluidez y Avatares</h2>
   <div class="row">
     <div class="left card">
+      <!-- Mini map so user sees avatar on map and can move it -->
+      <div class="mini-map" id="miniMap" tabindex="0" aria-label="Mapa de prueba"> 
+        <div id="playerAvatar" class="map-avatar" style="top:80px;left:120px;background:#cde6cd">Tú</div>
+      </div>
+
       <h3>Ejercicio</h3>
       <label for="level">Nivel:</label>
       <select id="level">
@@ -140,18 +148,30 @@ updatePrompt();
 /* --- Avatar --- */
 const avatarPreview = document.getElementById('avatarPreview');
 const avatarName = document.getElementById('avatarName');
-document.querySelectorAll('.emojiBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.textContent=b.textContent; }));
-document.querySelectorAll('.colorBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.style.background = b.dataset.color; }));
+const miniMap = document.getElementById('miniMap');
+const playerAvatar = document.getElementById('playerAvatar');
+
+// emoji/color buttons
+document.querySelectorAll('.emojiBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.textContent=b.textContent; playerAvatar.textContent = b.textContent; }));
+document.querySelectorAll('.colorBtn').forEach(b=>b.addEventListener('click',()=>{ avatarPreview.style.background = b.dataset.color; playerAvatar.style.background = b.dataset.color; }));
+
+// save avatar to localStorage
 document.getElementById('saveAvatar').addEventListener('click',()=>{
   const data = {emoji: avatarPreview.textContent, color: avatarPreview.style.background, name: avatarName.value||''};
   localStorage.setItem('miAvatar', JSON.stringify(data));
+  // reflect on map
+  playerAvatar.textContent = data.name ? (data.name.length>3 ? data.name.slice(0,3) : data.name) : data.emoji || 'Tú';
+  playerAvatar.style.background = data.color || getComputedStyle(playerAvatar).background;
   alert('Avatar guardado en este navegador.');
 });
+
+// export/import
 document.getElementById('exportAvatar').addEventListener('click',()=>{
   const v = localStorage.getItem('miAvatar') || JSON.stringify({emoji:avatarPreview.textContent, color:avatarPreview.style.background, name:avatarName.value||''});
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([v],{type:'application/json'}));
   a.download='avatar.json'; document.body.appendChild(a); a.click(); a.remove();
 });
+
 document.getElementById('importAvatarBtn').addEventListener('click',()=>document.getElementById('importFile').click());
 document.getElementById('importFile').addEventListener('change', async e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -161,11 +181,22 @@ document.getElementById('importFile').addEventListener('change', async e=>{
     avatarPreview.style.background = j.color||'#cde6cd';
     avatarName.value = j.name||'';
     localStorage.setItem('miAvatar', JSON.stringify(j));
+    // reflect on map
+    playerAvatar.textContent = j.name ? (j.name.length>3?j.name.slice(0,3):j.name) : j.emoji || 'Tú';
+    playerAvatar.style.background = j.color || playerAvatar.style.background;
     alert('Avatar importado y guardado.');
   }catch(err){ alert('JSON inválido'); }
 });
-/* load avatar on start */
-try{ const a = JSON.parse(localStorage.getItem('miAvatar')||'null'); if(a){ avatarPreview.textContent=a.emoji||'🙂'; avatarPreview.style.background=a.color||avatarPreview.style.background; avatarName.value=a.name||''; } }catch(e){}
+
+// load avatar on start
+try{
+  const a = JSON.parse(localStorage.getItem('miAvatar')||'null');
+  if(a){ avatarPreview.textContent=a.emoji||'🙂'; avatarPreview.style.background=a.color||avatarPreview.style.background; avatarName.value=a.name||''; 
+    // reflect on map
+    playerAvatar.textContent = a.name ? (a.name.length>3?a.name.slice(0,3):a.name) : a.emoji || 'Tú';
+    playerAvatar.style.background = a.color || playerAvatar.style.background;
+  }
+}catch(e){/* ignore */}
 
 /* --- Audio: record or file --- */
 let mediaRecorder=null, audioBlob=null;
@@ -334,6 +365,69 @@ function generateAdvice(m,label){
 /* init: if user has saved avatar already show it (done above) */
 
 /* Optional: play -> visualize live? skip for simplicity */
+
+/* === NEW: sync avatar to map and dragging + keyboard movement === */
+
+// Ensure elements exist
+const miniMapEl = document.getElementById('miniMap');
+const playerEl = document.getElementById('playerAvatar');
+
+function syncAvatarToMapFromLocal(){
+  try{
+    const a = JSON.parse(localStorage.getItem('miAvatar')||'null');
+    if(!a) return;
+    avatarPreview.textContent = a.emoji||avatarPreview.textContent;
+    avatarPreview.style.background = a.color||avatarPreview.style.background;
+    avatarName.value = a.name||avatarName.value;
+    playerEl.textContent = a.name ? (a.name.length>3? a.name.slice(0,3): a.name) : (a.emoji || 'Tú');
+    playerEl.style.background = a.color || playerEl.style.background;
+  }catch(e){ console.warn('sync avatar', e); }
+}
+// call once
+syncAvatarToMapFromLocal();
+
+// live update when choosing emoji/color
+document.querySelectorAll('.emojiBtn').forEach(b=> b.addEventListener('click', ()=>{
+  const emoji = b.textContent; avatarPreview.textContent = emoji; playerEl.textContent = avatarName.value? (avatarName.value.length>3?avatarName.value.slice(0,3):avatarName.value) : emoji;
+}));
+document.querySelectorAll('.colorBtn').forEach(b=> b.addEventListener('click', ()=>{
+  const color = b.dataset.color; avatarPreview.style.background = color; playerEl.style.background = color;
+}));
+
+// focus miniMap when saving name to allow arrow keys
+document.getElementById('saveAvatar').addEventListener('click', ()=>{ syncAvatarToMapFromLocal(); miniMapEl.focus(); });
+
+// Dragging with pointer events
+let dragging=false, dragOffsetX=0, dragOffsetY=0;
+playerEl.addEventListener('pointerdown', ev=>{
+  ev.preventDefault(); dragging=true; playerEl.setPointerCapture(ev.pointerId);
+  const rect = playerEl.getBoundingClientRect(); dragOffsetX = ev.clientX - rect.left; dragOffsetY = ev.clientY - rect.top;
+});
+
+document.addEventListener('pointermove', ev=>{
+  if(!dragging) return; const mapRect = miniMapEl.getBoundingClientRect();
+  let left = ev.clientX - mapRect.left - dragOffsetX; let top = ev.clientY - mapRect.top - dragOffsetY;
+  left = Math.max(0, Math.min(miniMapEl.clientWidth - playerEl.offsetWidth, left));
+  top = Math.max(0, Math.min(miniMapEl.clientHeight - playerEl.offsetHeight, top));
+  playerEl.style.left = left+'px'; playerEl.style.top = top+'px';
+});
+
+document.addEventListener('pointerup', ev=>{ if(!dragging) return; try{ playerEl.releasePointerCapture(ev.pointerId); }catch(e){} dragging=false; });
+
+// Keyboard movement for the miniMap (arrow keys when miniMap focused)
+miniMapEl.addEventListener('keydown', e=>{
+  const arrows=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight']; if(!arrows.includes(e.key)) return;
+  e.preventDefault(); let top = parseInt(playerEl.style.top,10) || playerEl.offsetTop; let left = parseInt(playerEl.style.left,10) || playerEl.offsetLeft; const step=10;
+  if(e.key==='ArrowUp') top = Math.max(0, top-step);
+  if(e.key==='ArrowDown') top = Math.min(miniMapEl.clientHeight - playerEl.offsetHeight, top+step);
+  if(e.key==='ArrowLeft') left = Math.max(0, left-step);
+  if(e.key==='ArrowRight') left = Math.min(miniMapEl.clientWidth - playerEl.offsetWidth, left+step);
+  playerEl.style.top = top+'px'; playerEl.style.left = left+'px';
+});
+
+// click miniMap to focus for keyboard
+miniMapEl.addEventListener('click', ()=> miniMapEl.focus());
+
 </script>
 </body>
 </html>
