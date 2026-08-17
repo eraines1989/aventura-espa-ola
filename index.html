@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Mundo de Idiomas - Desktop</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { display: flex; min-height: 100vh; background-color: #f4f7f5; }
+        /* Layout */
+        .world-panel { flex: 1; display: flex; flex-direction: column; padding: 20px; background-color: #eef2ef; border-right: 2px solid #dcdcdc; }
+        .world-panel h2 { color: #1e4620; margin-bottom: 10px; }
+        .game-canvas { flex: 1; background-color: #ffffff; border: 2px dashed #a3b899; border-radius: 12px; position: relative; overflow: hidden; outline: none; }
+        /* Avatars & Entities */
+        .avatar { width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; position: absolute; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: top 0.1s, left 0.1s; user-select: none; }
+        .player { background-color: #2e7d32; color: white; z-index: 10; }
+        .npc { background-color: #d84315; color: white; z-index: 5; }
+        /* Interactive Proximity UI */
+        .dialog-box { position: absolute; top: 15px; left: 15px; right: 15px; background: #fff8e1; border: 2px solid #ffb300; padding: 12px; border-radius: 8px; font-weight: 500; display: none; z-index: 20; color: #5d4037; }
+        .dialog-box[aria-hidden="false"] { display:block; }
+        .status-bar { position: absolute; bottom: 15px; left: 15px; background: rgba(255,255,255,0.9); padding: 8px 15px; border-radius: 20px; font-size: 13px; font-weight: 600; color: #2e7d32; border: 1px solid #a3b899; }
+        /* Right Sidebar: Voice Lab */
+        .audio-sidebar { width: 400px; display: flex; flex-direction: column; padding: 20px; background-color: #ffffff; }
+        .audio-sidebar h2 { color: #1e4620; margin-bottom: 20px; border-bottom: 2px solid #eef2ef; padding-bottom: 10px; }
+        .letter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .letter-card { background: #f8faf9; border: 1px solid #e2e8f0; padding: 15px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 20px; font-weight: bold; color: #2e7d32; }
+        .letter-card:hover, .letter-card:focus { background: #e8f5e9; border-color: #2e7d32; outline: none; }
+        .recorder-box { background: #e8f5e9; border: 1px solid #a5d6a7; padding: 20px; border-radius: 12px; text-align: center; }
+        .btn-record { background-color: #d32f2f; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
+        .btn-record.recording { background-color: #b71c1c; }
+        .btn-record:disabled { opacity: 0.6; cursor: not-allowed; }
+        .audio-playback { margin-top: 10px; width: 100%; display: none; }
+        /* Responsive: collapse sidebar on small screens */
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            .audio-sidebar { width: 100%; order: 2; }
+            .world-panel { order: 1; border-right: none; border-bottom: 2px solid #dcdcdc; }
+            .game-canvas { min-height: 320px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Multiplayer Map Panel -->
+    <div class="world-panel">
+        <h2>Aula Virtual Interactiva</h2>
+        <!-- Make canvas focusable for keyboard users and accessible -->
+        <div class="game-canvas" id="canvas" tabindex="0" role="region" aria-label="Aula virtual, mapa interactivo">
+            <!-- Pop-up message box when touching an NPC or Classmate -->
+            <div class="dialog-box" id="dialogBox" role="status" aria-live="polite" aria-hidden="true">💬 Profe Carlos: "¡Hola! Bienvenido al laboratorio. Haz clic en una letra a la derecha para practicar tu pronunciación."</div>
+            
+            <!-- Your Student Avatar -->
+            <div class="avatar player" id="playerAvatar" style="top: 200px; left: 200px;" role="img" aria-label="Tu avatar">Tú</div>
+            
+            <!-- Fixed Non-Player Character (NPC) -->
+            <div class="avatar npc" id="npcProfe" style="top: 100px; left: 100px;" role="img" aria-label="Profesor">Profe</div>
+            
+            <div class="status-bar">🎮 Usa las flechas del teclado para caminar. Acércate al Profe.</div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar Container -->
+    <div class="audio-sidebar">
+        <h2>Laboratorio de Voz</h2>
+        <div class="letter-grid" id="letterGrid">
+            <div class="letter-card" tabindex="0" role="button" data-letter="A">A</div>
+            <div class="letter-card" tabindex="0" role="button" data-letter="E">E</div>
+            <div class="letter-card" tabindex="0" role="button" data-letter="I">I</div>
+            <div class="letter-card" tabindex="0" role="button" data-letter="O">O</div>
+            <div class="letter-card" tabindex="0" role="button" data-letter="U">U</div>
+            <div class="letter-card" tabindex="0" role="button" data-letter="RR">RR</div>
+        </div>
+        <div class="recorder-box">
+            <h3 style="margin-bottom:10px;">Letra: <span id="activeLetter">-</span></h3>
+            <button type="button" class="btn-record" id="recordBtn" onclick="toggleRecording()" disabled>🎤 Grabar Voz</button>
+            <audio id="audioPlayback" class="audio-playback" controls></audio>
+        </div>
+    </div>
+
+    <script>
+        // Elements
+        const player = document.getElementById('playerAvatar');
+        const npc = document.getElementById('npcProfe');
+        const dialog = document.getElementById('dialogBox');
+        const canvas = document.getElementById('canvas');
+        const activeLetterEl = document.getElementById('activeLetter');
+        const recordBtn = document.getElementById('recordBtn');
+        const playback = document.getElementById('audioPlayback');
+        const letterGrid = document.getElementById('letterGrid');
+
+        // Recording state
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentStream = null;
+        let recording = false;
+
+        /* Movement: keyboard arrows, prevent default scrolling */
+        document.addEventListener('keydown', (e) => {
+            const arrows = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+            if (!arrows.includes(e.key)) return;
+            e.preventDefault();
+            let top = parseInt(player.style.top, 10) || player.offsetTop;
+            let left = parseInt(player.style.left, 10) || player.offsetLeft;
+            const step = 20;
+            const maxTop = canvas.clientHeight - player.offsetHeight;
+            const maxLeft = canvas.clientWidth - player.offsetWidth;
+
+            if (e.key === 'ArrowUp') top = Math.max(0, top - step);
+            if (e.key === 'ArrowDown') top = Math.min(maxTop, top + step);
+            if (e.key === 'ArrowLeft') left = Math.max(0, left - step);
+            if (e.key === 'ArrowRight') left = Math.min(maxLeft, left + step);
+
+            player.style.top = top + 'px';
+            player.style.left = left + 'px';
+
+            checkProximity();
+        });
+
+        // Ensure avatar stays in bounds on resize
+        window.addEventListener('resize', clampPlayerToCanvas);
+
+        function clampPlayerToCanvas() {
+            const maxTop = canvas.clientHeight - player.offsetHeight;
+            const maxLeft = canvas.clientWidth - player.offsetWidth;
+            let top = parseInt(player.style.top, 10) || player.offsetTop;
+            let left = parseInt(player.style.left, 10) || player.offsetLeft;
+            top = Math.max(0, Math.min(maxTop, top));
+            left = Math.max(0, Math.min(maxLeft, left));
+            player.style.top = top + 'px';
+            player.style.left = left + 'px';
+        }
+
+        // Proximity using element centers for better accuracy
+        function checkProximity() {
+            const pRect = player.getBoundingClientRect();
+            const nRect = npc.getBoundingClientRect();
+            const dx = (pRect.left + pRect.width/2) - (nRect.left + nRect.width/2);
+            const dy = (pRect.top + pRect.height/2) - (nRect.top + nRect.height/2);
+            const distance = Math.hypot(dx, dy);
+
+            // Interaction radius (in pixels)
+            const INTERACT_RADIUS = 60;
+
+            if (distance < INTERACT_RADIUS) {
+                dialog.setAttribute('aria-hidden', 'false');
+            } else {
+                dialog.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        // Letter selection (click & keyboard)
+        function selectLetter(letter) {
+            activeLetterEl.innerText = letter;
+            recordBtn.disabled = false;
+            recordBtn.focus();
+        }
+
+        // Click handler for letter cards
+        letterGrid.addEventListener('click', (ev) => {
+            const card = ev.target.closest('.letter-card');
+            if (!card) return;
+            const letter = card.dataset.letter;
+            selectLetter(letter);
+        });
+
+        // Keyboard selection for letter cards (Enter / Space)
+        letterGrid.addEventListener('keydown', (ev) => {
+            const card = ev.target.closest('.letter-card');
+            if (!card) return;
+            if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                selectLetter(card.dataset.letter);
+            }
+        });
+
+        // Recording lifecycle: start/stop and clean up stream tracks
+        async function toggleRecording() {
+            // Stop if currently recording
+            if (recording) {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+                return;
+            }
+
+            // Ensure a letter is selected
+            if (activeLetterEl.innerText === '-' || activeLetterEl.innerText === '') {
+                alert('Selecciona una letra primero.');
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Tu navegador no soporta grabación de audio.');
+                return;
+            }
+
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(currentStream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstart = () => {
+                    recording = true;
+                    recordBtn.classList.add('recording');
+                    recordBtn.textContent = '⏹️ Detener';
+                    playback.style.display = 'none';
+                };
+
+                mediaRecorder.onstop = () => {
+                    recording = false;
+                    recordBtn.classList.remove('recording');
+                    recordBtn.textContent = '🎤 Grabar Voz';
+                    // Build blob and show playback
+                    const mime = mediaRecorder.mimeType || 'audio/webm';
+                    const blob = new Blob(audioChunks, { type: mime });
+                    playback.src = URL.createObjectURL(blob);
+                    playback.style.display = 'block';
+                    // release tracks
+                    try {
+                        if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+                    } catch (err) {
+                        console.warn('Error stopping tracks', err);
+                    }
+                    currentStream = null;
+                };
+
+                mediaRecorder.start();
+
+                // auto-stop after 3s (like original)
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                    }
+                }, 3000);
+
+            } catch (err) {
+                console.error(err);
+                alert('Habilita el micrófono en tu navegador y permite el acceso a esta página.');
+                if (currentStream) {
+                    try { currentStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                    currentStream = null;
+                }
+            }
+        }
+
+        // small initialization
+        (function init() {
+            // Make initial ARIA state correct
+            dialog.setAttribute('aria-hidden', 'true');
+            // Accessibility: keyboard focus outline for canvas
+            canvas.addEventListener('focus', () => canvas.style.boxShadow = '0 0 0 3px rgba(46,125,50,0.15)');
+            canvas.addEventListener('blur', () => canvas.style.boxShadow = 'none');
+            // Set initial clamp
+            clampPlayerToCanvas();
+        })();
+    </script>
+</body>
+</html>
